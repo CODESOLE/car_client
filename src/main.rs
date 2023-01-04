@@ -4,6 +4,8 @@ use std::{
     io::{self, Read, Write},
     str::from_utf8,
     str::FromStr,
+    thread,
+    time::Duration,
 };
 
 #[derive(Debug, PartialEq)]
@@ -63,36 +65,36 @@ impl Display for Car {
         )
     }
 }
-
 fn main() -> io::Result<()> {
+    let mut iteration_count: usize = 0;
     const CLIENT: Token = Token(0);
     let mut client = TcpStream::connect("127.0.0.1:9123".parse().unwrap())?;
-    let mut car = Car::new((0, 0), (7, 1));
+    let mut car = Car::new((1, 1), (4, 1));
     let mut poll = Poll::new()?;
     poll.registry()
-        .register(&mut client, CLIENT, Interest::WRITABLE | Interest::READABLE)?;
+        .register(&mut client, CLIENT, Interest::WRITABLE)?;
 
     let mut events = Events::with_capacity(1);
     loop {
+        thread::sleep(Duration::from_millis(500));
         poll.poll(&mut events, None)?;
         for event in events.iter() {
-            println!("{}", car.to_string());
             match event.token() {
                 CLIENT => {
                     if event.is_writable() {
-                        println!("writable");
                         client.write(car.to_string().as_bytes())?;
                         poll.registry()
                             .reregister(&mut client, CLIENT, Interest::READABLE)?;
                     }
 
                     if event.is_readable() {
-                        println!("readable");
                         let mut data = vec![0; 13];
                         client.read(&mut data)?;
                         let temp_car = from_utf8(&data).unwrap().parse::<Car>().unwrap();
                         car.pos.0 = temp_car.pos.0;
                         car.pos.1 = temp_car.pos.1;
+                        iteration_count += 1;
+                        println!("[Iteration {}]   {}", iteration_count, car);
                         poll.registry()
                             .reregister(&mut client, CLIENT, Interest::WRITABLE)?;
                     }
