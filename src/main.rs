@@ -70,7 +70,7 @@ fn main() -> io::Result<()> {
     let mut car = Car::new((0, 0), (7, 1));
     let mut poll = Poll::new()?;
     poll.registry()
-        .register(&mut client, CLIENT, Interest::WRITABLE)?;
+        .register(&mut client, CLIENT, Interest::WRITABLE | Interest::READABLE)?;
 
     let mut events = Events::with_capacity(1);
     loop {
