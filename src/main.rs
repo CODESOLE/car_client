@@ -2,6 +2,7 @@ use mio::{net::TcpStream, Events, Interest, Poll, Token};
 use std::{
     fmt::{self, Display},
     io::{self, Read, Write},
+    net::Shutdown,
     str::from_utf8,
     str::FromStr,
     thread,
@@ -65,7 +66,18 @@ impl Display for Car {
         )
     }
 }
+
 fn main() -> io::Result<()> {
+    const MAP: &str = "#..#######
+#..#..#..#
+#..#..#..#
+#..#.....#
+#..#.....#
+#..####..#
+#........#
+##########";
+    let mut map_result = String::new();
+
     let mut iteration_count: usize = 0;
     const CLIENT: Token = Token(0);
     let mut client = TcpStream::connect("127.0.0.1:9123".parse().unwrap())?;
@@ -74,11 +86,29 @@ fn main() -> io::Result<()> {
     poll.registry()
         .register(&mut client, CLIENT, Interest::WRITABLE)?;
 
+    for (i, x) in MAP.lines().enumerate() {
+        for (j, y) in x.chars().enumerate() {
+            if car.pos.0 as usize == i && car.pos.1 as usize == j {
+                map_result.push('S');
+            } else if car.target.0 as usize == j && car.target.1 as usize == i {
+                map_result.push('E');
+            } else {
+                map_result.push(y);
+            }
+        }
+        map_result.push('\n');
+    }
+
     let mut events = Events::with_capacity(1);
-    loop {
+    'exit: loop {
         thread::sleep(Duration::from_millis(500));
         poll.poll(&mut events, None)?;
         for event in events.iter() {
+            if car.pos == car.target {
+                poll.registry().deregister(&mut client)?;
+                TcpStream::shutdown(&client, Shutdown::Both)?;
+                break 'exit;
+            }
             match event.token() {
                 CLIENT => {
                     if event.is_writable() {
@@ -91,6 +121,18 @@ fn main() -> io::Result<()> {
                         let mut data = vec![0; 13];
                         client.read(&mut data)?;
                         let temp_car = from_utf8(&data).unwrap().parse::<Car>().unwrap();
+
+                        for (i, x) in MAP.lines().enumerate() {
+                            for (j, _) in x.chars().enumerate() {
+                                if temp_car.pos.0 as usize == j && temp_car.pos.1 as usize == i {
+                                    if temp_car.pos != temp_car.target {
+                                        map_result
+                                            .replace_range((11 * i + j)..(11 * i + j + 1), "@");
+                                    }
+                                }
+                            }
+                        }
+
                         car.pos.0 = temp_car.pos.0;
                         car.pos.1 = temp_car.pos.1;
                         iteration_count += 1;
@@ -103,4 +145,6 @@ fn main() -> io::Result<()> {
             }
         }
     }
+    println!("{}", map_result);
+    Ok(())
 }
